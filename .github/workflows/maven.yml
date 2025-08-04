@@ -37,4 +37,21 @@ jobs:
           for ISSUE_KEY in $ISSUE_KEYS; do
             echo "🔧 Updating $ISSUE_KEY to fixVersion: $TAG_NAME"
 
-            PROJECT_KEY="${ISSUE_
+            PROJECT_KEY="${ISSUE_KEY%%-*}"
+
+            # 建立版本（無視失敗）
+            curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
+              -X POST \
+              -H "Content-Type: application/json" \
+              --data "{\"name\":\"$TAG_NAME\",\"project\":\"$PROJECT_KEY\"}" \
+              "$JIRA_BASE_URL/rest/api/3/version" > /dev/null
+
+            # 更新 Fix Version 欄位
+            curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
+              -X PUT \
+              -H "Content-Type: application/json" \
+              --data "{\"fields\":{\"fixVersions\":[{\"name\":\"$TAG_NAME\"}]}}" \
+              "$JIRA_BASE_URL/rest/api/3/issue/$ISSUE_KEY"
+
+            echo "✅ Updated $ISSUE_KEY"
+          done
