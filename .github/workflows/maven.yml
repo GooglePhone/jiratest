@@ -1,42 +1,53 @@
-name: Update Jira Fix Version
+name: Update Jira Fix Versions from Tag
 
 on:
   push:
     tags:
-      - 'release-*' # 你可自訂格式
+      - 'v*'  # 只對 v1.0.0 這類 tag 生效
 
 jobs:
   update-jira:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract tag and update Jira
+      - name: Get Jira Issue Keys from commit message and update Fix Versions
         env:
-          JIRA_BASE_URL: https://your-domain.atlassian.net
-          JIRA_USER_EMAIL: your-email@example.com
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
         run: |
           TAG_NAME="${GITHUB_REF#refs/tags/}"
-          echo "Tag: $TAG_NAME"
+          echo "🧷 Tag: $TAG_NAME"
 
-          # 解析 Jira 單號與版本，例如 release-PROJ-123-v1.2.3
-          if [[ "$TAG_NAME" =~ release-([A-Z]+-[0-9]+)-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            ISSUE_KEY="${BASH_REMATCH[1]}"
-            VERSION="${BASH_REMATCH[2]}"
-            echo "Updating issue $ISSUE_KEY with fix version $VERSION"
+          # 取得 tag 對應的 commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "📄 Commit message: $COMMIT_MSG"
 
-            # 先新增版本（如果尚未存在）
+          # 擷取所有符合格式的 Jira 單號（大寫字母-數字）
+          ISSUE_KEYS=$(echo "$COMMIT_MSG" | grep -oE '[A-Z]+-[0-9]+' | sort -u)
+
+          if [ -z "$ISSUE_KEYS" ]; then
+            echo "⚠️ No Jira issue keys found in commit message. Exiting."
+            exit 0
+          fi
+
+          for ISSUE_KEY in $ISSUE_KEYS; do
+            echo "🔧 Processing Jira issue: $ISSUE_KEY"
+
+            PROJECT_KEY="${ISSUE_KEY%%-*}"
+
+            # 嘗試建立版本（若已存在會失敗但無害）
             curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
               -X POST \
               -H "Content-Type: application/json" \
-              --data "{\"name\":\"$VERSION\", \"project\":\"${ISSUE_KEY%%-*}\"}" \
-              "$JIRA_BASE_URL/rest/api/3/version"
+              --data "{\"name\":\"$TAG_NAME\",\"project\":\"$PROJECT_KEY\"}" \
+              "$JIRA_BASE_URL/rest/api/3/version" > /dev/null
 
-            # 更新 issue 的 fixVersion
+            # 更新 Fix Version 欄位
             curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
               -X PUT \
               -H "Content-Type: application/json" \
-              --data "{\"fields\": {\"fixVersions\": [{\"name\": \"$VERSION\"}]}}" \
+              --data "{\"fields\":{\"fixVersions\":[{\"name\":\"$TAG_NAME\"}]}}" \
               "$JIRA_BASE_URL/rest/api/3/issue/$ISSUE_KEY"
-          else
-            echo "Tag format not matched. Skipping."
-          fi
+
+            echo "✅ Updated $ISSUE_KEY with fixVersion: $TAG_NAME"
+          done
