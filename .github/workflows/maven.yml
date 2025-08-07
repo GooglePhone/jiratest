@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      VERSION_NAME_PREFIX: "adminweb - "  # 👈 改為你的專案前綴
+      VERSION_NAME_PREFIX: "adminapi - "  # 👈 改為你的專案前綴
 
     steps:
       - name: Checkout code
